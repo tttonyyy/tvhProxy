@@ -11,8 +11,12 @@ app = Flask(__name__)
 # URL format: <protocol>://<username>:<password>@<hostname>:<port>, example: https://test:1234@localhost:9981
 config = {
     'bindAddr': os.environ.get('TVH_BINDADDR') or '',
-    'tvhURL': os.environ.get('TVH_URL') or 'http://test:test@localhost:9981',
-    'tvhProxyURL': os.environ.get('TVH_PROXY_URL') or 'http://localhost',
+    'tvhUser': os.environ.get('TVH_USER') or 'test',
+    'tvhPass':  os.environ.get('TVH_PASS') or 'test',
+    'tvhIP':  os.environ.get('TVH_IP') or 'localhost',
+    'tvhPort':  os.environ.get('TVH_PORT') or '9981',
+    'tvhProxyIP': os.environ.get('TVH_PROXY_IP') or 'localhost',
+    'tvhProxyPort': os.environ.get('TVH_PROXY_PORT') or '5004',
     'tunerCount': os.environ.get('TVH_TUNER_COUNT') or 6,  # number of tuners in tvh
     'tvhWeight': os.environ.get('TVH_WEIGHT') or 300,  # subscription priority
     'chunkSize': os.environ.get('TVH_CHUNK_SIZE') or 1024*1024,  # usually you don't need to edit this
@@ -28,8 +32,8 @@ discoverData = {
     'FirmwareVersion': '20150826',
     'DeviceID': '12345678',
     'DeviceAuth': 'test1234',
-    'BaseURL': '%s' % config['tvhProxyURL'],
-    'LineupURL': '%s/lineup.json' % config['tvhProxyURL']
+    'BaseURL': 'http://%s:%s' % (config['tvhProxyIP'], config['tvhProxyPort']),
+    'LineupURL': 'http://%s:%s/lineup.json' % (config['tvhProxyIP'], config['tvhProxyPort'])
 }
 
 @app.route('/discover.json')
@@ -53,8 +57,7 @@ def lineup():
 
     for c in _get_channels():
         if c['enabled']:
-            url = '%s/stream/channel/%s?profile=%s&weight=%s' % (config['tvhURL'], c['uuid'], config['streamProfile'],int(config['tvhWeight']))
-
+            url = 'http://%s:%s@%s:%s/stream/channel/%s?profile=%s&weight=%s' % (config['tvhUser'], config['tvhPass'], config['tvhIP'], config['tvhPort'], c['uuid'], config['streamProfile'], int(config['tvhWeight']))
             lineup.append({'GuideNumber': str(c['number']),
                            'GuideName': c['name'],
                            'URL': url
@@ -72,18 +75,15 @@ def lineup_post():
 def device():
     return render_template('device.xml',data = discoverData),{'Content-Type': 'application/xml'}
 
-
 def _get_channels():
-    url = '%s/api/channel/grid?start=0&limit=999999' % config['tvhURL']
-
+    url = 'http://%s:%s/api/channel/grid?start=0&limit=999999' % (config['tvhIP'], config['tvhPort']) 
     try:
-        r = requests.get(url)
+        r = requests.get(url, auth=requests.auth.HTTPDigestAuth(config['tvhUser'], config['tvhPass']))
         return r.json()['entries']
 
     except Exception as e:
         print('An error occured: ' + repr(e))
 
-
 if __name__ == '__main__':
-    http = WSGIServer((config['bindAddr'], 5004), app.wsgi_app)
+    http = WSGIServer((config['bindAddr'], int(config['tvhProxyPort'])), app.wsgi_app)
     http.serve_forever()
